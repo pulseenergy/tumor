@@ -7,6 +7,8 @@ var fs = require('fs'),
 	_ = require('lodash-node'),
 	glob = require('glob');
 
+var noop = _.contains(process.argv, '--noop');
+
 var args, dir;
 if (fs.existsSync('package.json')) {
 	args = [ './package.json' ];
@@ -17,7 +19,7 @@ if (fs.existsSync('package.json')) {
 }
 dir = path.join(process.cwd(), dir);
 
-console.log('>>> starting with ' + args.length + ' projects in ' + dir);
+console.log('>>> starting with ' + args.length + ' project' + (args.length > 1 ? 's' : '') + ' in ' + dir);
 
 function exec(cmd, args, cwd, cb) {
 	if (cb == null) {
@@ -79,7 +81,13 @@ function cloneIfMissing(project, cb) {
 	if (project.exists) {
 		cb();
 	} else if (!fs.existsSync(project.path)) {
-		exec('git', ['clone', project.url, project.path], cb);
+		if (noop) {
+			console.log('(skipped) git clone ' + project.url + ' ' + project.path);
+			project.exists = true;
+			cb();
+		} else {
+			exec('git', ['clone', project.url, project.path], cb);
+		}
 	} else {
 		projectFromFile(path.join(project.path, 'package.json'), cb);
 	}
@@ -91,13 +99,34 @@ function linkDependencies(project, cb) {
 	async.eachSeries(project.deps, function (dep, cb) {
 		var dependent = projects[dep];
 		var relative = path.relative(project.path, dependent.path);
-		var module = path.join(project.path, dependent.name);
+		var module = path.join(project.path, 'node_modules', dependent.name);
 		if (fs.existsSync(module) && fs.lstatSync(module).isSymbolicLink()) {
 			return cb();
 		}
 		dependent.installed = true;
-		exec('npm', ['link', relative], project.path, cb);
+		if (noop) {
+			console.log('(skipped) npm link ' + relative + ' [cwd=' + project.path + ']');
+			cb();
+		} else {
+			exec('npm', ['link', relative], project.path, cb);
+		}
 	}, cb);
+}
+
+function installProject(project, cb) {
+	if (project.installed) {
+		console.log('>>> npm install for ' + project.name + ' skipped because it was the target of a npm link');
+		cb();
+	} else {
+		console.log('>>> npm install for ' + project.name);
+		project.installed = true;
+		if (noop) {
+			console.log('(skipped) npm install [cwd=' + project.path + ']');
+			cb();
+		} else {
+			exec('npm', ['install'], project.path, cb);
+		}
+	}
 }
 
 async.each(args, projectFromFile, function (err) {
@@ -113,19 +142,10 @@ async.each(args, projectFromFile, function (err) {
 		async.eachSeries(_.values(projects), linkDependencies, function (err) {
 			if (err) throw err;
 
-			async.eachSeries(_.values(projects), function (project, cb) {
-				if (project.installed) {
-					console.log('>>> npm install for ' + project.name + ' skipped because it was the target of a npm link');
-					cb();
-				} else {
-					console.log('>>> npm install for ' + project.name);
-					project.installed = true;
-					exec('npm', ['install'], project.path, cb);
-				}
-			}, function (err) {
+			async.eachSeries(_.values(projects), installProject, function (err) {
 				if (err) throw err;
 
-				console.log('>>> ended with ' + projects.length + ' projects in ' + dir);
+				console.log('>>> ended with ' + _.size(projects) + ' projects in ' + dir);
 			});
 		});
 	});
