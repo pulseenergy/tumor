@@ -7,17 +7,17 @@ var fs = require('fs'),
 	_ = require('lodash-node'),
 	glob = require('glob');
 
-var args;
-var dir = './';
+var args, dir;
 if (fs.existsSync('package.json')) {
 	args = [ './package.json' ];
 	dir = '../';
 } else {
 	args = glob.sync('*/package.json');
+	dir = './';
 }
 dir = path.join(process.cwd(), dir);
 
-console.log('>>> starting with ' + args.length + ' root projects in ' + dir);
+console.log('>>> starting with ' + args.length + ' projects in ' + dir);
 
 function exec(cmd, args, cwd, cb) {
 	if (cb == null) {
@@ -37,7 +37,13 @@ function exec(cmd, args, cwd, cb) {
 	});
 }
 
-function addDependencies(deps, file, cb) {
+var projects = {};
+
+function expectedPath(url) {
+	return path.join(dir, path.basename(url).replace(/\.git$/, ""));
+}
+
+function projectFromFile(file, cb) {
 	fs.readFile(file, function (err, data) {
 		if (err) return cb(err);
 
@@ -46,89 +52,81 @@ function addDependencies(deps, file, cb) {
 		} catch (e) {
 			return cb(e);
 		}
+		var project = projects[json.name] = {
+			name: json.name,
+			path: path.dirname(path.resolve(file)),
+			exists: true,
+			deps: []
+		};
 		_.each(json.dependencies, function (version, name) {
 			if (/git@github.com:pulseenergy/.test(version)) {
-				deps[name] = version.replace(/(git\+ssh:\/\/)?([^#]*)(#.*)?$/, '$2');
+				project.deps.push(name);
+				if (!projects[name]) {
+					var url = version.replace(/(git\+ssh:\/\/)?([^#]*)(#.*)?$/, '$2');
+					projects[name] = {
+						name: name,
+						url: url,
+						path: expectedPath(url)
+					};
+				}
 			}
 		});
-		cb(null, deps);
+		cb(null, project);
 	});
 }
 
-function readAllDependencies(cb) {
-	async.reduce(args, {}, addDependencies, function (err, deps) {
-		if (err) return cb(err);
-
-		cb(null, _.map(deps, function (url, name) {
-			return { name: name, url: url };
-		}));
-	});
-}
-
-function directoryForUrl(url) {
-	return path.join(dir, path.basename(url).replace(/\.git$/, ""));
-}
-
-function cloneAllDependencies(cb) {
-	var allCloned = false;
-	var allProjects = [];
-
-	function cloneIfMissing(dep, cb) {
-		var expected = directoryForUrl(dep.url);
-		if (!fs.existsSync(expected)) {
-			allCloned = false;
-			exec('git', ['clone', dep.url, expected], cb);
-		} else {
-			allProjects.push({ name: dep.name, path: expected })
-			cb();
-		}
+function cloneIfMissing(project, cb) {
+	if (project.exists) {
+		cb();
+	} else if (!fs.existsSync(project.path)) {
+		exec('git', ['clone', project.url, project.path], cb);
+	} else {
+		projectFromFile(path.join(project.path, 'package.json'), cb);
 	}
-
-	async.until(function () {
-		return allCloned;
-	}, function (cb) {
-		readAllDependencies(function (err, deps) {
-			if (err) return cb(err);
-
-			allCloned = true;
-			allProjects = [];
-			async.eachSeries(deps, cloneIfMissing, cb);
-		});
-	}, function (err) {
-		if (err) return cb(err);
-		cb(null, allProjects);
-	});
 }
 
 function linkDependencies(project, cb) {
 	console.log('>>> linking modules for ' + project.name);
 
-	addDependencies({}, path.join(project.path, 'package.json'), function (err, deps) {
-		if (err) cb(err);
-
-		async.eachSeries(_.pairs(deps), function (dep, cb) {
-			var expected = directoryForUrl(dep[1]);
-			var relative = path.relative(project.path, expected);
-			var module = path.join(project.path, 'node_modules', dep[0]);
-			if (fs.existsSync(module) && fs.lstatSync(module).isSymbolicLink()) {
-				return cb();
-			}
-			exec('npm', ['link', relative], project.path, cb);
-		}, cb);
-	});
+	async.eachSeries(project.deps, function (dep, cb) {
+		var dependent = projects[dep];
+		var relative = path.relative(project.path, dependent.path);
+		var module = path.join(project.path, dependent.name);
+		if (fs.existsSync(module) && fs.lstatSync(module).isSymbolicLink()) {
+			return cb();
+		}
+		dependent.installed = true;
+		exec('npm', ['link', relative], project.path, cb);
+	}, cb);
 }
 
-cloneAllDependencies(function (err, allProjects) {
+async.each(args, projectFromFile, function (err) {
 	if (err) throw err;
 
-	async.eachSeries(allProjects, linkDependencies, function (err) {
+	async.until(function () {
+		return _.all(projects, 'exists');
+	}, function (cb) {
+		async.eachSeries(_.values(projects), cloneIfMissing, cb);
+	}, function (err) {
 		if (err) throw err;
 
-		async.eachSeries(allProjects, function (project, cb) {
-			console.log('>>> npm install for ' + project.name);
-			exec('npm', ['install'], project.path, cb);
-		}, function (err) {
+		async.eachSeries(_.values(projects), linkDependencies, function (err) {
 			if (err) throw err;
+
+			async.eachSeries(_.values(projects), function (project, cb) {
+				if (project.installed) {
+					console.log('>>> npm install for ' + project.name + ' skipped because it was the target of a npm link');
+					cb();
+				} else {
+					console.log('>>> npm install for ' + project.name);
+					project.installed = true;
+					exec('npm', ['install'], project.path, cb);
+				}
+			}, function (err) {
+				if (err) throw err;
+
+				console.log('>>> ended with ' + projects.length + ' projects in ' + dir);
+			});
 		});
 	});
 });
