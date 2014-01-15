@@ -2,7 +2,7 @@
 
 var fs = require('fs'),
 	path = require('path'),
-	spawn = require('child_process').spawn,
+	child_process = require('child_process'),
 	async = require('async'),
 	_ = require('lodash-node'),
 	glob = require('glob');
@@ -19,7 +19,6 @@ if (fs.existsSync('package.json')) {
 }
 dir = path.join(process.cwd(), dir);
 
-console.log('>>> starting with ' + plural(args.length, 'project') + ' in ' + dir);
 
 function plural(count, word) {
 	return count + ' ' + (count > 1 ? word + 's' : word);
@@ -30,7 +29,7 @@ function exec(cmd, args, cwd, cb) {
 		cb = cwd;
 		cwd = undefined;
 	}
-	var proc = spawn(cmd, args, {
+	var proc = child_process.spawn(cmd, args, {
 		cwd: cwd,
 		stdio: ['ignore', process.stdout, process.stderr]
 	});
@@ -44,6 +43,7 @@ function exec(cmd, args, cwd, cb) {
 }
 
 var projects = {};
+var matchers = {};
 
 function expectedPath(url) {
 	return path.join(dir, path.basename(url).replace(/\.git$/, ""));
@@ -54,7 +54,9 @@ function normalizeGitUrl(url) {
 }
 
 function shouldLink(url) {
-	return /git@github.com:pulseenergy/.test(url);
+	return _.any(matchers, function (matcher) {
+		return matcher.test(url);
+	});
 }
 
 function readJson(file, cb) {
@@ -65,6 +67,17 @@ function readJson(file, cb) {
 		} catch (e) {
 			return cb(e);
 		}
+	});
+}
+
+function matchersFromFile(file, cb) {
+	var dir = path.dirname(file);
+	child_process.exec('git config --get remote.origin.url', { cwd: dir }, function (err, stdout, stderr) {
+		if (err) return cb(err);
+
+		var pattern = path.dirname(stdout.trim());
+		matchers[pattern] = new RegExp(pattern);
+		cb();
 	});
 }
 
@@ -147,24 +160,32 @@ function installProject(project, cb) {
 	}
 }
 
-async.each(args, projectFromFile, function (err) {
+console.log('>>> starting with ' + plural(args.length, 'project') + ' in ' + dir);
+
+async.waterfall([
+	function (cb) {
+		async.each(args, matchersFromFile, cb);
+	},
+	function (cb) {
+		console.log('>>> looking for dependencies matching', Object.keys(matchers));
+
+		async.each(args, projectFromFile, cb);
+	},
+	function (cb) {
+		async.until(function () {
+			return _.all(projects, 'exists');
+		}, function (cb) {
+			async.eachSeries(_.values(projects), cloneIfMissing, cb);
+		}, cb);
+	},
+	function (cb) {
+		async.eachSeries(_.values(projects), linkDependencies, cb);
+	},
+	function (cb) {
+		async.eachSeries(_.values(projects), installProject, cb);
+	}
+], function (err) {
 	if (err) throw err;
 
-	async.until(function () {
-		return _.all(projects, 'exists');
-	}, function (cb) {
-		async.eachSeries(_.values(projects), cloneIfMissing, cb);
-	}, function (err) {
-		if (err) throw err;
-
-		async.eachSeries(_.values(projects), linkDependencies, function (err) {
-			if (err) throw err;
-
-			async.eachSeries(_.values(projects), installProject, function (err) {
-				if (err) throw err;
-
-				console.log('>>> ended with ' + plural(_.size(projects), 'project') + ' in ' + dir);
-			});
-		});
-	});
+	console.log('>>> ended with ' + plural(_.size(projects), 'project') + ' in ' + dir);
 });
