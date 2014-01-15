@@ -1,31 +1,134 @@
 #!/usr/bin/env node
 
 var fs = require('fs'),
-	async = require('async');
+	path = require('path'),
+	spawn = require('child_process').spawn,
+	async = require('async'),
+	_ = require('lodash-node'),
+	glob = require('glob');
 
-var args = process.argv.slice(2);
+var args;
+var dir = './';
+if (fs.existsSync('package.json')) {
+	args = [ './package.json' ];
+	dir = '../';
+} else {
+	args = glob.sync('*/package.json');
+}
+dir = path.join(process.cwd(), dir);
 
-function readDependencies(file, cb) {
+console.log('>>> starting with ' + args.length + ' root projects in ' + dir);
+
+function exec(cmd, args, cwd, cb) {
+	if (cb == null) {
+		cb = cwd;
+		cwd = undefined;
+	}
+	var proc = spawn(cmd, args, {
+		cwd: cwd,
+		stdio: ['ignore', process.stdout, process.stderr]
+	});
+	proc.on('close', function (code) {
+		var e = null;
+		if (code !== 0) {
+			e = new Error(cmd + ' returned ' + code);
+		}
+		cb(e);
+	});
+}
+
+function addDependencies(deps, file, cb) {
 	fs.readFile(file, function (err, data) {
 		if (err) return cb(err);
+
 		try {
 			var json = JSON.parse(data);
 		} catch (e) {
 			return cb(e);
 		}
-		if (json.dependencies != null) {
-			Object.keys(json.dependencies).forEach(function (dep) {
-				var version = json.dependencies[dep];
-				if (/git@github.com:pulseenergy/.test(version)) {
-					console.log(version.replace(/(git\+ssh:\/\/)?([^#]*)(#.*)?$/, '$2'))
-				}
-			});
-		}
-		cb(null);
+		_.each(json.dependencies, function (version, name) {
+			if (/git@github.com:pulseenergy/.test(version)) {
+				deps[name] = version.replace(/(git\+ssh:\/\/)?([^#]*)(#.*)?$/, '$2');
+			}
+		});
+		cb(null, deps);
 	});
 }
 
-async.eachSeries(args, readDependencies, function (err) {
-	if (err) throw err;
-});
+function readAllDependencies(cb) {
+	async.reduce(args, {}, addDependencies, function (err, deps) {
+		if (err) return cb(err);
 
+		cb(null, _.map(deps, function (url, name) {
+			return { name: name, url: url };
+		}));
+	});
+}
+
+function directoryForUrl(url) {
+	return path.join(dir, path.basename(url).replace(/\.git$/, ""));
+}
+
+function cloneAllDependencies(cb) {
+	var allCloned = false;
+	var allProjects = [];
+
+	function cloneIfMissing(dep, cb) {
+		var expected = directoryForUrl(dep.url);
+		if (!fs.existsSync(expected)) {
+			allCloned = false;
+			exec('git', ['clone', dep.url, expected], cb);
+		} else {
+			allProjects.push({ name: dep.name, path: expected })
+			cb();
+		}
+	}
+
+	async.until(function () {
+		return allCloned;
+	}, function (cb) {
+		readAllDependencies(function (err, deps) {
+			if (err) return cb(err);
+
+			allCloned = true;
+			allProjects = [];
+			async.eachSeries(deps, cloneIfMissing, cb);
+		});
+	}, function (err) {
+		if (err) return cb(err);
+		cb(null, allProjects);
+	});
+}
+
+function linkDependencies(project, cb) {
+	console.log('>>> linking modules for ' + project.name);
+
+	addDependencies({}, path.join(project.path, 'package.json'), function (err, deps) {
+		if (err) cb(err);
+
+		async.eachSeries(_.pairs(deps), function (dep, cb) {
+			var expected = directoryForUrl(dep[1]);
+			var relative = path.relative(project.path, expected);
+			var module = path.join(project.path, 'node_modules', dep[0]);
+			if (fs.existsSync(module) && fs.lstatSync(module).isSymbolicLink()) {
+				return cb();
+			}
+			exec('npm', ['link', relative], project.path, cb);
+		}, cb);
+	});
+}
+
+cloneAllDependencies(function (err, allProjects) {
+	if (err) throw err;
+
+	async.eachSeries(allProjects, linkDependencies, function (err) {
+		if (err) throw err;
+
+		async.eachSeries(allProjects, function (project, cb) {
+			console.log('>>> npm install for ' + project.name);
+			exec('npm', ['install'], project.path, cb);
+		}, function (err) {
+			if (err) throw err;
+		});
+	});
+});
