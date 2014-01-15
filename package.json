@@ -2,7 +2,10 @@
   "name": "tumor",
   "version": "0.0.0",
   "description": "it grows",
-  "bin": "./bin/tumor",
+  "bin": {
+    "tumor": "./bin/tumor",
+    "te": "./bin/te"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
