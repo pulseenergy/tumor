@@ -165,6 +165,17 @@ function cloneIfMissing(project, cb) {
 	}
 }
 
+function dontCloneIfMissing(project, cb) {
+	if (project.exists) {
+		cb();
+	} else if (!fs.existsSync(project.path)) {
+		project.missing = true;
+		cb();
+	} else {
+		projectFromFile(path.join(project.path, 'package.json'), cb);
+	}
+}
+
 function linkDependencies(project, cb) {
 	console.log('>>> linking modules for ' + project.name);
 
@@ -230,6 +241,15 @@ var linkProjectSteps = [
 ];
 
 var execProjectSteps = [
+	function (cb) {
+		async.until(function () {
+			return _.all(projects, function (project) {
+				return project.exists || project.missing;
+			});
+		}, function (cb) {
+			async.eachSeries(_.values(projects), dontCloneIfMissing, cb);
+		}, cb);
+	},
 	function (cb) {
 		async.eachSeries(_.values(projects), execCommand, cb);
 	}
