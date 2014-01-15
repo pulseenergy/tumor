@@ -49,15 +49,29 @@ function expectedPath(url) {
 	return path.join(dir, path.basename(url).replace(/\.git$/, ""));
 }
 
-function projectFromFile(file, cb) {
+function normalizeGitUrl(url) {
+	return url.replace(/(git\+ssh:\/\/)?([^#]*)(#.*)?$/, '$2');
+}
+
+function shouldLink(url) {
+	return /git@github.com:pulseenergy/.test(url);
+}
+
+function readJson(file, cb) {
 	fs.readFile(file, function (err, data) {
 		if (err) return cb(err);
-
 		try {
-			var json = JSON.parse(data);
+			cb(null, JSON.parse(data));
 		} catch (e) {
 			return cb(e);
 		}
+	});
+}
+
+function projectFromFile(file, cb) {
+	readJson(file, function (err, json) {
+		if (err) return cb(err);
+
 		var project = projects[json.name] = {
 			name: json.name,
 			path: path.dirname(path.resolve(file)),
@@ -65,10 +79,10 @@ function projectFromFile(file, cb) {
 			deps: []
 		};
 		_.each(json.dependencies, function (version, name) {
-			if (/git@github.com:pulseenergy/.test(version)) {
+			if (shouldLink(version)) {
 				project.deps.push(name);
 				if (!projects[name]) {
-					var url = version.replace(/(git\+ssh:\/\/)?([^#]*)(#.*)?$/, '$2');
+					var url = normalizeGitUrl(version);
 					projects[name] = {
 						name: name,
 						url: url,
