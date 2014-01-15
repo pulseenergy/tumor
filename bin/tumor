@@ -73,7 +73,10 @@ function readJson(file, cb) {
 function matchersFromFile(file, cb) {
 	var dir = path.dirname(file);
 	child_process.exec('git config --get remote.origin.url', { cwd: dir }, function (err, stdout, stderr) {
-		if (err) return cb(err);
+		if (err) {
+			console.log('couldn\'t read git remote in ' + dir + ', continuing');
+			return cb();
+		}
 
 		var pattern = path.dirname(stdout.trim());
 		matchers[pattern] = new RegExp(pattern);
@@ -167,7 +170,7 @@ async.waterfall([
 		async.each(args, matchersFromFile, cb);
 	},
 	function (cb) {
-		console.log('>>> looking for dependencies matching', Object.keys(matchers));
+		console.log('>>> looking for dependencies matching', _.values(matchers));
 
 		async.each(args, projectFromFile, cb);
 	},
