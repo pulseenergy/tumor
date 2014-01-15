@@ -9,7 +9,7 @@ var fs = require('fs'),
 
 function help() {
 	var usage = '$0 link [--verbose] [--noop]\n\twill clone missing projects and run `npm link` as required\n'
-		+ '$0 exec [--verbose] [--noop] [--] <command>\n\twill run <command> in each of the selected projects\n'
+		+ '$0 exec [--verbose] [--noop] [--fail] [--] <command>\n\twill run <command> in each of the selected projects\n'
 		+ '\n'
 		+ 'To work on a single project, run from the directory containing package.json. If no package.json is found in the current directory, all projects matching */package.json will be affected.\n'
 
@@ -20,7 +20,8 @@ function help() {
 var argv = process.argv.slice(2),
 	mode = argv[0],
 	noop = false,
-	verbose = function () {};
+	verbose = function () {},
+	failfast = false;
 
 if (argv.length == 0) help();
 
@@ -40,6 +41,13 @@ for (i = 1; i < argv.length; i++) {
 	} else if (arg === '--') {
 		consumed++;
 		break;
+	} else if (mode == 'exec') {
+		if (arg == '--fail') {
+			failfast = true;
+			consumed++;
+		} else {
+			break;
+		}
 	}
 }
 
@@ -212,7 +220,9 @@ function installProject(project, cb) {
 function execCommand(project, cb) {
 	if (project.exists) {
 		console.log('>>> exec for ' + project.name);
-		exec(argv[0], argv.slice(1), project.path, cb);
+		exec(argv[0], argv.slice(1), project.path, function (err) {
+			cb(failfast ? err : null);
+		});
 	} else {
 		cb();
 	}
