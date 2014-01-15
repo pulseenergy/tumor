@@ -135,6 +135,14 @@ function matchersFromFile(file, cb) {
 		}
 
 		var pattern = path.dirname(stdout.trim());
+		if (/https:\/\/github.com\//.test(pattern)) {
+			var also = pattern.replace(/https:\/\/github.com\//, 'git@github.com:');
+			matchers[also] = new RegExp(also);
+		}
+		if (/git@github.com:/.test(pattern)) {
+			var also = pattern.replace(/git@github.com:/, 'https://github.com/');
+			matchers[also] = new RegExp(also);
+		}
 		matchers[pattern] = new RegExp(pattern);
 		cb();
 	});
