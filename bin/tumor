@@ -8,8 +8,8 @@ var fs = require('fs'),
 	glob = require('glob');
 
 function help() {
-	var usage = '$0 link [--noop]\n\twill clone missing projects and run `npm link` as required\n'
-		+ '$0 exec [--noop] [--] <command>\n\twill run <command> in each of the selected projects\n'
+	var usage = '$0 link [--verbose] [--noop]\n\twill clone missing projects and run `npm link` as required\n'
+		+ '$0 exec [--verbose] [--noop] [--] <command>\n\twill run <command> in each of the selected projects\n'
 		+ '\n'
 		+ 'To work on a single project, run from the directory containing package.json. If no package.json is found in the current directory, all projects matching */package.json will be affected.\n'
 
@@ -19,18 +19,25 @@ function help() {
 
 var argv = process.argv.slice(2),
 	mode = argv[0],
-	noop = false;
+	noop = false,
+	verbose = function () {};
 
 if (argv.length == 0) help();
 
 var i, consumed = 1;
 for (i = 1; i < argv.length; i++) {
-	if (argv[i] === '--help' || argv[i] === '-h') {
+	var arg = argv[i];
+	if (arg === '--help' || arg === '-h') {
 		help();
-	} else if (argv[i] === '--noop') {
+	} else if (arg === '--verbose') {
+		consumed++;
+		verbose = function () {
+			console.log.apply(console, arguments);
+		};
+	} else if (arg === '--noop') {
 		consumed++;
 		noop = true;
-	} else if (argv[i] === '--') {
+	} else if (arg === '--') {
 		consumed++;
 		break;
 	}
@@ -115,7 +122,7 @@ function matchersFromFile(file, cb) {
 	var dir = path.dirname(file);
 	child_process.exec('git config --get remote.origin.url', { cwd: dir }, function (err, stdout, stderr) {
 		if (err) {
-			console.log('couldn\'t read git remote in ' + dir + ', continuing');
+			verbose('>>> couldn\'t read git remote in ' + dir + ', continuing');
 			return cb();
 		}
 
@@ -218,7 +225,7 @@ var steps = [
 		async.each(args, matchersFromFile, cb);
 	},
 	function (cb) {
-		console.log('>>> looking for dependencies matching', _.values(matchers));
+		verbose('>>> looking for dependencies matching', _.values(matchers));
 
 		async.each(args, projectFromFile, cb);
 	}
