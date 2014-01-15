@@ -1,0 +1,31 @@
+#!/usr/bin/env node
+
+var fs = require('fs'),
+	async = require('async');
+
+var args = process.argv.slice(2);
+
+function readDependencies(file, cb) {
+	fs.readFile(file, function (err, data) {
+		if (err) return cb(err);
+		try {
+			var json = JSON.parse(data);
+		} catch (e) {
+			return cb(e);
+		}
+		if (json.dependencies != null) {
+			Object.keys(json.dependencies).forEach(function (dep) {
+				var version = json.dependencies[dep];
+				if (/git@github.com:pulseenergy/.test(version)) {
+					console.log(version.replace(/(git\+ssh:\/\/)?([^#]*)(#.*)?$/, '$2'))
+				}
+			});
+		}
+		cb(null);
+	});
+}
+
+async.eachSeries(args, readDependencies, function (err) {
+	if (err) throw err;
+});
+

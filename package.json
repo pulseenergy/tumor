@@ -1,0 +1,12 @@
+{
+  "name": "tumor",
+  "version": "0.0.0",
+  "description": "it grows",
+  "bin": "./bin/tumor",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "async": "~0.2.9"
+  }
+}
