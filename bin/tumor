@@ -19,7 +19,11 @@ if (fs.existsSync('package.json')) {
 }
 dir = path.join(process.cwd(), dir);
 
-console.log('>>> starting with ' + args.length + ' project' + (args.length > 1 ? 's' : '') + ' in ' + dir);
+console.log('>>> starting with ' + plural(args.length, 'project') + ' in ' + dir);
+
+function plural(count, word) {
+	return count + ' ' + (count > 1 ? word + 's' : word);
+}
 
 function exec(cmd, args, cwd, cb) {
 	if (cb == null) {
@@ -145,7 +149,7 @@ async.each(args, projectFromFile, function (err) {
 			async.eachSeries(_.values(projects), installProject, function (err) {
 				if (err) throw err;
 
-				console.log('>>> ended with ' + _.size(projects) + ' projects in ' + dir);
+				console.log('>>> ended with ' + plural(_.size(projects), 'project') + ' in ' + dir);
 			});
 		});
 	});
