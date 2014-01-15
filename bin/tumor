@@ -7,7 +7,44 @@ var fs = require('fs'),
 	_ = require('lodash-node'),
 	glob = require('glob');
 
-var noop = _.contains(process.argv, '--noop');
+function help() {
+	var usage = '$0 link [--noop]\n\twill clone missing projects and run `npm link` as required\n'
+		+ '$0 exec [--noop] [--] <command>\n\twill run <command> in each of the selected projects\n'
+		+ '\n'
+		+ 'To work on a single project, run from the directory containing package.json. If no package.json is found in the current directory, all projects matching */package.json will be affected.\n'
+
+	console.log(usage.replace(/\$0/g, 'tumor'));
+	process.exit(1);
+}
+
+var argv = process.argv.slice(2),
+	mode = argv[0],
+	noop = false;
+
+if (argv.length == 0) help();
+
+var i, consumed = 1;
+for (i = 1; i < argv.length; i++) {
+	if (argv[i] === '--help' || argv[i] === '-h') {
+		help();
+	} else if (argv[i] === '--noop') {
+		consumed++;
+		noop = true;
+	} else if (argv[i] === '--') {
+		consumed++;
+		break;
+	}
+}
+
+argv = argv.slice(consumed);
+
+if (mode == 'link') {
+	if (argv.length !== 0) help();
+} else if (mode == 'exec') {
+	if (argv.length === 0) help();
+} else {
+	help();
+}
 
 var args, dir;
 if (fs.existsSync('package.json')) {
@@ -21,13 +58,17 @@ dir = path.join(process.cwd(), dir);
 
 
 function plural(count, word) {
-	return count + ' ' + (count > 1 ? word + 's' : word);
+	return count + ' ' + (count != 1 ? word + 's' : word);
 }
 
 function exec(cmd, args, cwd, cb) {
 	if (cb == null) {
 		cb = cwd;
 		cwd = undefined;
+	}
+	if (noop) {
+		console.log('(skipped) ' + cmd + ' ' + args.join(' ') + (cwd == null ? '' : ' [cwd=' + cwd + ']'));
+		return cb();
 	}
 	var proc = child_process.spawn(cmd, args, {
 		cwd: cwd,
@@ -116,12 +157,9 @@ function cloneIfMissing(project, cb) {
 		cb();
 	} else if (!fs.existsSync(project.path)) {
 		if (noop) {
-			console.log('(skipped) git clone ' + project.url + ' ' + project.path);
 			project.exists = true;
-			cb();
-		} else {
-			exec('git', ['clone', project.url, project.path], cb);
 		}
+		exec('git', ['clone', project.url, project.path], cb);
 	} else {
 		projectFromFile(path.join(project.path, 'package.json'), cb);
 	}
@@ -138,12 +176,7 @@ function linkDependencies(project, cb) {
 			return cb();
 		}
 		dependent.installed = true;
-		if (noop) {
-			console.log('(skipped) npm link ' + relative + ' [cwd=' + project.path + ']');
-			cb();
-		} else {
-			exec('npm', ['link', relative], project.path, cb);
-		}
+		exec('npm', ['link', relative], project.path, cb);
 	}, cb);
 }
 
@@ -154,26 +187,33 @@ function installProject(project, cb) {
 	} else {
 		console.log('>>> npm install for ' + project.name);
 		project.installed = true;
-		if (noop) {
-			console.log('(skipped) npm install [cwd=' + project.path + ']');
-			cb();
-		} else {
-			exec('npm', ['install'], project.path, cb);
-		}
+		exec('npm', ['install'], project.path, cb);
 	}
 }
 
-console.log('>>> starting with ' + plural(args.length, 'project') + ' in ' + dir);
+function execCommand(project, cb) {
+	if (project.exists) {
+		console.log('>>> exec for ' + project.name);
+		exec(argv[0], argv.slice(1), project.path, cb);
+	} else {
+		cb();
+	}
+}
 
-async.waterfall([
+var steps = [
 	function (cb) {
+		console.log('>>> starting with ' + plural(args.length, 'project') + ' in ' + dir);
+
 		async.each(args, matchersFromFile, cb);
 	},
 	function (cb) {
 		console.log('>>> looking for dependencies matching', _.values(matchers));
 
 		async.each(args, projectFromFile, cb);
-	},
+	}
+];
+
+var linkProjectSteps = [
 	function (cb) {
 		async.until(function () {
 			return _.all(projects, 'exists');
@@ -187,7 +227,21 @@ async.waterfall([
 	function (cb) {
 		async.eachSeries(_.values(projects), installProject, cb);
 	}
-], function (err) {
+];
+
+var execProjectSteps = [
+	function (cb) {
+		async.eachSeries(_.values(projects), execCommand, cb);
+	}
+];
+
+if (mode === 'link') {
+	steps = steps.concat(linkProjectSteps);
+} else if (mode === 'exec') {
+	steps = steps.concat(execProjectSteps);
+}
+
+async.waterfall(steps, function (err) {
 	if (err) throw err;
 
 	console.log('>>> ended with ' + plural(_.size(projects), 'project') + ' in ' + dir);
