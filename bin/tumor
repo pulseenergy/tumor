@@ -11,6 +11,7 @@ var fs = require('fs'),
 function help() {
 	var usage = '$0 link [--verbose] [--noop]\n\twill clone missing projects and run `npm link` as required\n'
 		+ '$0 exec [--verbose] [--noop] [--fail] [--] <command>\n\twill run <command> in each of the selected projects\n'
+		+ '$0 status\n\twill report missing projects and unlinked dependencies\n'
 		+ '\n'
 		+ 'To work on a single project, run from the directory containing package.json. If no package.json is found in the current directory, all projects matching */package.json will be affected.\n';
 
@@ -54,7 +55,7 @@ for (i = 1; i < argv.length; i++) {
 
 argv = argv.slice(consumed);
 
-if (mode == 'link') {
+if (mode == 'link' || mode == 'status') {
 	if (argv.length !== 0) help();
 } else if (mode == 'exec') {
 	if (argv.length === 0) help();
@@ -158,7 +159,9 @@ function projectFromFile(file, cb) {
 					projects[name] = {
 						name: name,
 						url: version,
-						path: path.join(dir, tumor.expectedPath(version))
+						path: path.join(dir, tumor.expectedPath(version)),
+						exists: false,
+						deps: []
 					};
 				}
 			}
@@ -167,30 +170,23 @@ function projectFromFile(file, cb) {
 	});
 }
 
-function cloneIfMissing(project, cb) {
-	if (project.exists) {
-		cb();
-	} else if (!fs.existsSync(project.path)) {
-		if (noop) {
-			project.exists = true;
-			project.deps = [];
-		}
-		var url = project.url.replace(/^git\+ssh:\/\//, '').replace(/#.*$/, '');
-		exec('git', ['clone', url, project.path], cb);
-	} else {
-		projectFromFile(path.join(project.path, 'package.json'), cb);
+function cloneProject(project, cb) {
+	if (noop) {
+		project.exists = true;
 	}
+	var url = project.url.replace(/^git\+ssh:\/\//, '').replace(/#.*$/, '');
+	exec('git', ['clone', url, project.path], cb);
 }
 
-function dontCloneIfMissing(project, cb) {
-	if (project.exists) {
+function checkDependencies(project, cb) {
+	async.eachSeries(project.deps, function (dep, cb) {
+		var dependent = projects[dep];
+		var module = path.join(project.path, 'node_modules', dependent.name);
+		if (!(fs.existsSync(module) && fs.lstatSync(module).isSymbolicLink())) {
+			console.log('project ' + project.name + ' dependency ' + dependent.name + ' is not linked');
+		}
 		cb();
-	} else if (!fs.existsSync(project.path)) {
-		project.missing = true;
-		cb();
-	} else {
-		projectFromFile(path.join(project.path, 'package.json'), cb);
-	}
+	}, cb);
 }
 
 function linkDependencies(project, cb) {
@@ -230,7 +226,33 @@ function execCommand(project, cb) {
 	}
 }
 
-var steps = [
+function eachProject(func) {
+	return function (cb) {
+		async.eachSeries(_.values(projects), func, cb);
+	};
+}
+
+function expandProjects(whenMissing) {
+	return function (cb) {
+		async.until(function () {
+			return _.all(projects, function (project) {
+				return project.exists || project.missing
+			});
+		}, eachProject(function (project, cb) {
+			if (project.exists || project.missing) {
+				cb();
+			} else if (!fs.existsSync(project.path)) {
+				whenMissing(project, cb);
+			} else {
+				projectFromFile(path.join(project.path, 'package.json'), cb);
+			}
+		}), cb);
+	};
+}
+
+var steps = {};
+
+steps.common = [
 	function (cb) {
 		console.log('>>> starting with ' + plural(args.length, 'project') + ' in ' + dir);
 
@@ -243,44 +265,30 @@ var steps = [
 	}
 ];
 
-var linkProjectSteps = [
-	function (cb) {
-		async.until(function () {
-			return _.all(projects, 'exists');
-		}, function (cb) {
-			async.eachSeries(_.values(projects), cloneIfMissing, cb);
-		}, cb);
-	},
-	function (cb) {
-		async.eachSeries(_.values(projects), linkDependencies, cb);
-	},
-	function (cb) {
-		async.eachSeries(_.values(projects), installProject, cb);
-	}
+steps.link = [
+	expandProjects(cloneProject),
+	eachProject(linkDependencies),
+	eachProject(installProject)
 ];
 
-var execProjectSteps = [
-	function (cb) {
-		async.until(function () {
-			return _.all(projects, function (project) {
-				return project.exists || project.missing;
-			});
-		}, function (cb) {
-			async.eachSeries(_.values(projects), dontCloneIfMissing, cb);
-		}, cb);
-	},
-	function (cb) {
-		async.eachSeries(_.values(projects), execCommand, cb);
-	}
+steps.exec = [
+	expandProjects(function (project, cb) {
+		project.missing = true;
+		cb();
+	}),
+	eachProject(execCommand)
 ];
 
-if (mode === 'link') {
-	steps = steps.concat(linkProjectSteps);
-} else if (mode === 'exec') {
-	steps = steps.concat(execProjectSteps);
-}
+steps.status = [
+	expandProjects(function (project, cb) {
+		project.missing = true;
+		console.log('project ' + project.name + ' not found');
+		cb();
+	}),
+	eachProject(checkDependencies)
+];
 
-async.waterfall(steps, function (err) {
+async.waterfall(steps.common.concat(steps[mode]), function (err) {
 	if (err) throw err;
 
 	console.log('>>> ended with ' + plural(_.size(projects), 'project') + ' in ' + dir);
