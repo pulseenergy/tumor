@@ -121,7 +121,7 @@ function readJson(file, cb) {
 		try {
 			cb(null, JSON.parse(data));
 		} catch (e) {
-			return cb(e);
+			return cb(new Error('Couldn\'t read ' + file + ' as JSON'));
 		}
 	});
 }
