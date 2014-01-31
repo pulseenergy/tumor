@@ -7,12 +7,16 @@
     "te": "./bin/te"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha test --reporter spec && jshint bin lib test"
   },
   "dependencies": {
     "async": "~0.2.9",
     "lodash-node": "~2.4.1",
     "glob": "~3.2.8"
+  },
+  "devDependencies": {
+    "mocha": "~1.9.0",
+    "jshint": "~1.1.0"
   },
   "repository": {
     "type": "git",

@@ -5,13 +5,14 @@ var fs = require('fs'),
 	child_process = require('child_process'),
 	async = require('async'),
 	_ = require('lodash-node'),
-	glob = require('glob');
+	glob = require('glob'),
+	tumor = require('../lib/tumor');
 
 function help() {
 	var usage = '$0 link [--verbose] [--noop]\n\twill clone missing projects and run `npm link` as required\n'
 		+ '$0 exec [--verbose] [--noop] [--fail] [--] <command>\n\twill run <command> in each of the selected projects\n'
 		+ '\n'
-		+ 'To work on a single project, run from the directory containing package.json. If no package.json is found in the current directory, all projects matching */package.json will be affected.\n'
+		+ 'To work on a single project, run from the directory containing package.json. If no package.json is found in the current directory, all projects matching */package.json will be affected.\n';
 
 	console.log(usage.replace(/\$0/g, 'tumor'));
 	process.exit(1);
@@ -101,14 +102,6 @@ function exec(cmd, args, cwd, cb) {
 var projects = {};
 var matchers = {};
 
-function expectedPath(url) {
-	return path.join(dir, path.basename(url).replace(/\.git$/, ""));
-}
-
-function normalizeGitUrl(url) {
-	return url.replace(/(git\+ssh:\/\/)?([^#]*)(#.*)?$/, '$2');
-}
-
 function shouldLink(url) {
 	return _.any(matchers, function (matcher) {
 		return matcher.test(url);
@@ -162,11 +155,10 @@ function projectFromFile(file, cb) {
 			if (shouldLink(version)) {
 				project.deps.push(name);
 				if (!projects[name]) {
-					var url = normalizeGitUrl(version);
 					projects[name] = {
 						name: name,
-						url: url,
-						path: expectedPath(url)
+						url: version,
+						path: path.join(dir, tumor.expectedPath(version))
 					};
 				}
 			}
@@ -181,8 +173,10 @@ function cloneIfMissing(project, cb) {
 	} else if (!fs.existsSync(project.path)) {
 		if (noop) {
 			project.exists = true;
+			project.deps = [];
 		}
-		exec('git', ['clone', project.url, project.path], cb);
+		var url = project.url.replace(/^git\+ssh:\/\//, '').replace(/#.*$/, '');
+		exec('git', ['clone', url, project.path], cb);
 	} else {
 		projectFromFile(path.join(project.path, 'package.json'), cb);
 	}
