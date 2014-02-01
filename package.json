@@ -7,7 +7,7 @@
     "te": "./bin/te"
   },
   "scripts": {
-    "test": "mocha test --reporter spec && jshint bin lib test"
+    "test": "mocha test --reporter spec && jshint lib test"
   },
   "dependencies": {
     "async": "~0.2.9",
