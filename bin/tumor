@@ -11,7 +11,7 @@ var fs = require('fs'),
 function help() {
 	var usage = '$0 link [--verbose] [--noop]\n\twill clone missing projects and run `npm link` as required\n'
 		+ '$0 exec [--verbose] [--noop] [--fail] [--] <command>\n\twill run <command> in each of the selected projects\n'
-		+ '$0 status\n\twill report missing projects and unlinked dependencies\n'
+		+ '$0 status\n\twill report missing projects, unlinked dependencies, and git changes across projects\n'
 		+ '\n'
 		+ 'To work on a single project, run from the directory containing package.json. If no package.json is found in the current directory, all projects matching */package.json will be affected.\n';
 
@@ -172,7 +172,7 @@ function projectFromFile(file, cb) {
 
 function cloneProject(project, cb) {
 	if (noop) {
-		project.exists = true;
+		project.missing = true;
 	}
 	var url = project.url.replace(/^git\+ssh:\/\//, '').replace(/#.*$/, '');
 	exec('git', ['clone', url, project.path], cb);
@@ -183,7 +183,7 @@ function checkDependencies(project, cb) {
 		var dependent = projects[dep];
 		var module = path.join(project.path, 'node_modules', dependent.name);
 		if (!(fs.existsSync(module) && fs.lstatSync(module).isSymbolicLink())) {
-			console.log('project ' + project.name + ' dependency ' + dependent.name + ' is not linked');
+			console.log(project.name + ' dependency ' + dependent.name + ' is not linked');
 		}
 		cb();
 	}, cb);
@@ -226,6 +226,42 @@ function execCommand(project, cb) {
 	}
 }
 
+function gitStatus(project, cb) {
+	if (!project.exists) return cb();
+	// <project> is (`git rev-list --count ..@{u}` behind upstream|`git rev-list --count @{u}..` ahead of upstream)
+	// `git status -s`
+	var ahead, behind;
+
+	async.series([
+		function (cb) {
+			child_process.exec('git rev-list --count @{u}..', { cwd: project.path }, function (err, stdout, stderr) {
+				if (!err) {
+					ahead = parseInt(stdout, 10);
+				}
+				cb(err);
+			});
+		},
+		function (cb) {
+			child_process.exec('git rev-list --count ..@{u}', { cwd: project.path }, function (err, stdout, stderr) {
+				if (!err) {
+					behind = parseInt(stdout, 10);
+				}
+				cb(err);
+			});
+		},
+		function (cb) {
+			if (ahead && behind) {
+				console.log(project.name + ' has diverged from upstream (' + ahead + ' ahead, ' + behind + ' behind)');
+			} else if (ahead) {
+				console.log(project.name + ' is ' + plural(ahead, 'commit') + ' ahead of upstream');
+			} else if (behind) {
+				console.log(project.name + ' is ' + plural(behind, 'commit') + ' behind upstream');
+			}
+			exec('git', ['status', '-s'], project.path, cb);
+		}
+	], cb);
+}
+
 function eachProject(func) {
 	return function (cb) {
 		async.eachSeries(_.values(projects), func, cb);
@@ -254,7 +290,7 @@ var steps = {};
 
 steps.common = [
 	function (cb) {
-		console.log('>>> starting with ' + plural(args.length, 'project') + ' in ' + dir);
+		verbose('>>> starting with ' + plural(args.length, 'project') + ' in ' + dir);
 
 		async.each(args, matchersFromFile, cb);
 	},
@@ -282,14 +318,22 @@ steps.exec = [
 steps.status = [
 	expandProjects(function (project, cb) {
 		project.missing = true;
-		console.log('project ' + project.name + ' not found');
 		cb();
 	}),
-	eachProject(checkDependencies)
+	eachProject(function (project, cb) {
+		if (project.missing) {
+			console.log(project.name + ' is missing');
+		} else {
+			async.series([
+				checkDependencies.bind(null, project),
+				gitStatus.bind(null, project)
+			], cb);
+		}
+	})
 ];
 
 async.waterfall(steps.common.concat(steps[mode]), function (err) {
 	if (err) throw err;
 
-	console.log('>>> ended with ' + plural(_.size(projects), 'project') + ' in ' + dir);
+	verbose('>>> ended with ' + plural(_.size(projects), 'project') + ' in ' + dir);
 });
