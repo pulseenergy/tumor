@@ -352,6 +352,7 @@ steps.status = [
 
 		if (project.missing) {
 			output('   project is missing');
+			cb();
 		} else {
 			async.series([
 				checkDependencies.bind(null, project, output),
