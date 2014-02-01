@@ -1,5 +1,7 @@
 {
 	"undef": true,
+	"browser": false,
+	"devel": false,
 	"node": true,
 	"eqnull": true,
 	"globals": {
