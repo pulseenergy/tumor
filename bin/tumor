@@ -178,12 +178,12 @@ function cloneProject(project, cb) {
 	exec('git', ['clone', url, project.path], cb);
 }
 
-function checkDependencies(project, cb) {
+function checkDependencies(project, output, cb) {
 	async.eachSeries(project.deps, function (dep, cb) {
 		var dependent = projects[dep];
 		var module = path.join(project.path, 'node_modules', dependent.name);
 		if (!(fs.existsSync(module) && fs.lstatSync(module).isSymbolicLink())) {
-			console.log(project.name + ' dependency ' + dependent.name + ' is not linked');
+			output('   dependency ' + dependent.name + ' is not linked');
 		}
 		cb();
 	}, cb);
@@ -226,7 +226,7 @@ function execCommand(project, cb) {
 	}
 }
 
-function gitStatus(project, cb) {
+function gitStatus(project, output, cb) {
 	if (!project.exists) return cb();
 	// <project> is (`git rev-list --count ..@{u}` behind upstream|`git rev-list --count @{u}..` ahead of upstream)
 	// `git status -s`
@@ -251,13 +251,27 @@ function gitStatus(project, cb) {
 		},
 		function (cb) {
 			if (ahead && behind) {
-				console.log(project.name + ' has diverged from upstream (' + ahead + ' ahead, ' + behind + ' behind)');
+				output('   has diverged from upstream (' + ahead + ' ahead, ' + behind + ' behind)');
 			} else if (ahead) {
-				console.log(project.name + ' is ' + plural(ahead, 'commit') + ' ahead of upstream');
+				output('   is ' + plural(ahead, 'commit') + ' ahead of upstream');
 			} else if (behind) {
-				console.log(project.name + ' is ' + plural(behind, 'commit') + ' behind upstream');
+				output('   is ' + plural(behind, 'commit') + ' behind upstream');
 			}
-			exec('git', ['status', '-s'], project.path, cb);
+			var proc = child_process.spawn('git', '-c color.status=always status -s'.split(' '), {
+				cwd: project.path,
+				stdio: ['ignore', 'pipe', 'pipe']
+			});
+			proc.stdout.on('data', function (chunk) {
+				output('   has uncommitted changes');
+				process.stdout.write(chunk);
+			});
+			proc.stderr.on('data', function (chunk) {
+				output();
+				process.stderr.write(chunk);
+			});
+			proc.on('close', function (code) {
+				cb();
+			});
 		}
 	], cb);
 }
@@ -321,12 +335,23 @@ steps.status = [
 		cb();
 	}),
 	eachProject(function (project, cb) {
+		var logged = false;
+		function output() {
+			if (!logged) {
+				console.log('>>> ' + project.name);
+				logged = true;
+			}
+			if (arguments.length) {
+				console.log.apply(console, arguments);
+			}
+		}
+
 		if (project.missing) {
-			console.log(project.name + ' is missing');
+			output('   project is missing');
 		} else {
 			async.series([
-				checkDependencies.bind(null, project),
-				gitStatus.bind(null, project)
+				checkDependencies.bind(null, project, output),
+				gitStatus.bind(null, project, output)
 			], cb);
 		}
 	})
