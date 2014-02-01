@@ -1,0 +1,15 @@
+{
+	"undef": true,
+	"node": true,
+	"eqnull": true,
+	"globals": {
+		"it": false,
+		"xit": false,
+		"describe": false,
+		"xdescribe": false,
+		"before": false,
+		"after": false,
+		"beforeEach": false,
+		"afterEach": false
+	}
+}
