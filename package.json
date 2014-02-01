@@ -12,7 +12,8 @@
   "dependencies": {
     "async": "~0.2.9",
     "lodash-node": "~2.4.1",
-    "glob": "~3.2.8"
+    "glob": "~3.2.8",
+    "cli-color": "~0.2.3"
   },
   "devDependencies": {
     "mocha": "~1.9.0",

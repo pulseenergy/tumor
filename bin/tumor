@@ -6,6 +6,7 @@ var fs = require('fs'),
 	async = require('async'),
 	_ = require('lodash-node'),
 	glob = require('glob'),
+	clc = require('cli-color'),
 	tumor = require('../lib/tumor');
 
 function help() {
@@ -73,6 +74,9 @@ if (fs.existsSync('package.json')) {
 }
 dir = path.join(process.cwd(), dir);
 
+var color = {
+	name: clc.bold.blueBright
+};
 
 function plural(count, word) {
 	return count + ' ' + (count != 1 ? word + 's' : word);
@@ -190,7 +194,7 @@ function checkDependencies(project, output, cb) {
 }
 
 function linkDependencies(project, cb) {
-	console.log('>>> linking modules for ' + project.name);
+	console.log('>>> linking modules for ' + color.name(project.name));
 
 	async.eachSeries(project.deps, function (dep, cb) {
 		var dependent = projects[dep];
@@ -206,10 +210,10 @@ function linkDependencies(project, cb) {
 
 function installProject(project, cb) {
 	if (project.installed) {
-		console.log('>>> npm install for ' + project.name + ' skipped because it was the target of a npm link');
+		console.log('>>> npm install for ' + color.name(project.name) + ' skipped because it was the target of a npm link');
 		cb();
 	} else {
-		console.log('>>> npm install for ' + project.name);
+		console.log('>>> npm install for ' + color.name(project.name));
 		project.installed = true;
 		exec('npm', ['install'], project.path, cb);
 	}
@@ -217,7 +221,7 @@ function installProject(project, cb) {
 
 function execCommand(project, cb) {
 	if (project.exists) {
-		console.log('>>> exec for ' + project.name);
+		console.log('>>> exec for ' + color.name(project.name));
 		exec(argv[0], argv.slice(1), project.path, function (err) {
 			cb(failfast ? err : null);
 		});
@@ -338,7 +342,7 @@ steps.status = [
 		var logged = false;
 		function output() {
 			if (!logged) {
-				console.log('>>> ' + project.name);
+				console.log('>>> ' + color.name(project.name));
 				logged = true;
 			}
 			if (arguments.length) {
