@@ -13,7 +13,8 @@
     "async": "~0.6.1",
     "lodash-node": "~2.4.1",
     "glob": "~3.2.8",
-    "cli-color": "~0.2.3"
+    "cli-color": "~0.2.3",
+    "rc": "~0.3.5"
   },
   "devDependencies": {
     "mocha": "~1.18.0",
