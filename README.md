@@ -5,7 +5,7 @@ tumor is a tool for working with many interlinked npm projects all at once. `npm
 
 there are [other](http://myrepos.branchable.com/) [tools](https://github.com/pulseenergy/mgit) for working with multiple git repositories at once, but this one knows to work only on the repositories relevant to the task at hand.
 
-install it: `npm install -g git://github.com/pulseenergy/tumor.git`.
+install it: `npm install -g tumor`.
 
 then in your messy, interlinked projects: `tumor link`, `tumor exec git pull`, `tumor exec git push`, etc.
 
