@@ -14,7 +14,7 @@
     "cli-color": "~0.2.3",
     "glob": "~3.2.8",
     "hosted-git-info": "^1.5.3",
-    "lodash-node": "~2.4.1",
+    "lodash": "^3.7.0",
     "normalize-git-url": "^1.0.0",
     "npm-package-arg": "^3.1.0",
     "rc": "~0.3.5"
