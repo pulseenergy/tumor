@@ -12,7 +12,7 @@
   "dependencies": {
     "async": "~0.6.1",
     "cli-color": "~0.2.3",
-    "glob": "~3.2.8",
+    "glob": "^5.0.5",
     "hosted-git-info": "^1.5.3",
     "lodash": "^3.7.0",
     "normalize-git-url": "^1.0.0",
