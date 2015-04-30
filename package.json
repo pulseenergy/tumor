@@ -13,10 +13,10 @@
     "async": "~0.6.1",
     "cli-color": "~0.2.3",
     "glob": "^5.0.5",
-    "hosted-git-info": "^1.5.3",
+    "hosted-git-info": "^2.1.2",
     "lodash": "^3.7.0",
     "normalize-git-url": "^1.0.0",
-    "npm-package-arg": "^3.1.0",
+    "npm-package-arg": "^4.0.0",
     "rc": "~0.3.5"
   },
   "devDependencies": {
