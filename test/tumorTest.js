@@ -1,5 +1,5 @@
-var assert = require('assert'),
-	tumor = require('../lib/tumor');
+var assert = require('assert');
+var tumor = require('../lib/tumor');
 
 describe('tumor', function () {
 

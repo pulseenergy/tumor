@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "indent": [2, "tab"],
+    "semi": [2, "always"],
+    "space-before-function-paren": [2, { "anonymous": "always", "named": "never" }],
+    "eqeqeq": [2, "allow-null"],
+    "padded-blocks": 0
+  },
+  "extends": "standard"
+}
