@@ -10,3 +10,9 @@ install it: `npm install -g tumor`.
 then in your messy, interlinked projects: `tumor link`, `tumor exec git pull`, `tumor exec git push`, etc.
 
 `tumor exec` is awfully wordy, so it's aliased to `te`.
+
+tumor tries to be smart about which projects should be linked, but you can override its decisions with a `.tumorrc` file placed at the root of your workspace.
+```
+[link.override]
+some-dependency=false
+```
