@@ -1,0 +1,18 @@
+<component name="libraryTable">
+  <library name="<%= name %> node_modules" type="javaScript">
+    <properties>
+      <option name="frameworkName" value="node_modules" />
+      <sourceFilesUrls>
+        <item url="file://$PROJECT_DIR$/<%= name %>/node_modules" />
+      </sourceFilesUrls>
+    </properties>
+    <CLASSES>
+      <root url="file://$PROJECT_DIR$/<%= name %>/node_modules" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+    <excluded><% _.each(exclusions, function (exclude) { %>
+      <root url="file://$PROJECT_DIR$/<%= name %>/<%= exclude %>" /><% }); %>
+    </excluded>
+  </library>
+</component>
