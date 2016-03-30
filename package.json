@@ -10,11 +10,11 @@
     "test": "mocha test --reporter spec && eslint ."
   },
   "dependencies": {
-    "async": "~0.6.1",
+    "async": "^1.5.2",
     "chalk": "^1.1.1",
-    "glob": "^5.0.5",
+    "glob": "^7.0.3",
     "hosted-git-info": "^2.1.2",
-    "lodash": "^3.7.0",
+    "lodash": "^4.6.1",
     "normalize-git-url": "^3.0.1",
     "npm-package-arg": "^4.0.0",
     "rc": "~0.3.5",
